@@ -51,6 +51,109 @@ const details = [
 
 const optionIds = ["A", "B", "C", "D", "E", "F"];
 
+const difficultyProfiles = [
+  {
+    id: "easy",
+    label: "Easy",
+    ordinal: 0,
+    multiModulo: 7,
+    stemClauses: [
+      "The team needs the most direct control for the stated risk.",
+      "The priority is choosing the core concept without overengineering the response.",
+      "The service owner wants a practical first step that matches the security objective."
+    ],
+    distractorClosers: [
+      "but without enforcing the needed control",
+      "while leaving the root exposure unchanged",
+      "without proving that the risk is reduced",
+      "but only after the issue becomes visible again"
+    ],
+    lengthBalancers: [
+      "which can look reasonable in a policy review but does not address the operational failure",
+      "which may reduce friction for users but leaves the same attack path available",
+      "which creates documentation without changing the security outcome"
+    ],
+    tags: ["foundation", "direct-control"]
+  },
+  {
+    id: "normal",
+    label: "Normal",
+    ordinal: 1,
+    multiModulo: 5,
+    stemClauses: [
+      "A previous fix addressed symptoms but not the underlying control gap.",
+      "The decision has to balance business impact with defensible risk reduction.",
+      "The team wants a response that can be repeated in similar incidents."
+    ],
+    distractorClosers: [
+      "while deferring the technical control until a later review",
+      "and rely on manual oversight to catch failures after the fact",
+      "while keeping the current access path or exposure mostly unchanged",
+      "and treat documentation as the primary mitigation"
+    ],
+    lengthBalancers: [
+      "which makes the option sound auditable but still leaves prevention or validation incomplete",
+      "which reduces short-term disruption but preserves the condition that enabled the finding",
+      "which is administratively convenient but weaker than addressing the control gap directly"
+    ],
+    tags: ["applied", "control-selection"]
+  },
+  {
+    id: "hard",
+    label: "Hard",
+    ordinal: 2,
+    multiModulo: 4,
+    stemClauses: [
+      "One stakeholder is pushing for the fastest visible fix, while another needs evidence that the fix will survive audit.",
+      "The organization has limited telemetry, and the next move should improve both response and future detection.",
+      "The technical team must avoid confusing a compensating control with complete remediation."
+    ],
+    distractorClosers: [
+      "while documenting the decision as an exception that can be revisited after the next audit cycle",
+      "and pair it with monitoring even though the initiating weakness remains possible",
+      "because it appears to reduce immediate noise while avoiding a disruptive architecture change",
+      "while using approval records to show due diligence instead of removing the exposure"
+    ],
+    lengthBalancers: [
+      "which is a tempting governance-heavy answer but does not close the primary attack path in the scenario",
+      "which sounds operationally cautious but relies on detection after the risky condition is still allowed",
+      "which may be acceptable as a temporary exception but is not the best response when a direct control is available"
+    ],
+    tags: ["advanced", "best-answer", "near-miss-distractors"]
+  },
+  {
+    id: "extra-hard",
+    label: "Extra hard",
+    ordinal: 3,
+    multiModulo: 3,
+    stemClauses: [
+      "Two answers would partially improve the situation, but only one best aligns containment, evidence, and long-term control.",
+      "The wrong answers each solve a neighboring problem, but they miss the priority created by the scenario.",
+      "Assume the organization will accept a temporary control only if the permanent remediation path is explicit."
+    ],
+    distractorClosers: [
+      "and justify it with a risk memo even though the main security decision is pushed outside the response window",
+      "while preserving uptime at the cost of leaving the same trust assumption or exposure in place",
+      "and add compensating monitoring that would detect recurrence but not prevent the scenario from repeating",
+      "because it is easier to deploy quickly even though it addresses a secondary symptom first"
+    ],
+    lengthBalancers: [
+      "which is deliberately plausible because it improves process maturity while failing to satisfy the highest-risk requirement",
+      "which could be a follow-up task, but selecting it first would leave the most important exposure unresolved",
+      "which has useful audit value but is weaker than the option that changes enforcement or containment immediately"
+    ],
+    tags: ["expert", "pbq-style", "priority-analysis", "tricky-distractors"]
+  }
+];
+
+const correctQualifiers = [
+  "then validate the result with logs or testing",
+  "and document the owner, approval, and verification evidence",
+  "while preserving the evidence needed to prove effectiveness",
+  "with monitoring, ownership, and rollback expectations defined",
+  "then confirm that the original exposure or control gap is closed"
+];
+
 function topic(objective, title, scenario, correct, secondary, distractors, explanation, tags) {
   return { objective, title, scenario, correct, secondary, distractors, explanation, tags };
 }
@@ -64,41 +167,193 @@ function rotate(items, seed) {
   return copy;
 }
 
-function makeQuestion(domain, topicItem, globalNumber, localNumber, variant, topicIndex) {
-  const org = organizations[(globalNumber + topicIndex + variant) % organizations.length];
-  const detail = details[(globalNumber * 3 + topicIndex + variant) % details.length];
-  const constraint = constraints[(globalNumber * 5 + topicIndex + variant) % constraints.length];
-  const hasSecondary = Boolean(topicItem.secondary);
-  const isMultiple = hasSecondary && (variant + topicIndex) % 4 === 1;
-  const instruction = isMultiple
-    ? "Which TWO responses best address the situation?"
-    : "Which response is the BEST choice?";
-  const stem = `${org} ${topicItem.scenario} ${detail} ${constraint} ${instruction}`;
+function trimSentence(text) {
+  return String(text).trim().replace(/[\s.;,]+$/g, "");
+}
 
-  const correctTexts = isMultiple ? [topicItem.correct, topicItem.secondary] : [topicItem.correct];
-  const selectedDistractors = rotate(topicItem.distractors, globalNumber + topicIndex + variant)
-    .slice(0, isMultiple ? 3 : 3);
-  const choiceTexts = rotate([...correctTexts, ...selectedDistractors], globalNumber + variant + topicIndex);
+function compactCorrect(text, profile, seed) {
+  let value = trimSentence(text)
+    .replace(/\bimmediately, /g, "")
+    .replace(/\bbefore production use\b/g, "pre-production")
+    .replace(/\bbefore deployment\b/g, "pre-deployment")
+    .replace(/\bwhere approved\b/g, "when authorized")
+    .replace(/\bwhere applicable\b/g, "when needed");
+
+  if (profile.id === "easy") {
+    value = value
+      .replace(/\bcentralized /g, "")
+      .replace(/\benhanced /g, "")
+      .replace(/\bmanaged /g, "");
+  }
+
+  if ((profile.ordinal + seed) % 5 === 0) {
+    value = value.replace(/\baccording to\b/g, "per");
+  }
+
+  if ((seed + profile.ordinal) % 3 === 0) {
+    const qualifier = correctQualifiers[(seed + profile.ordinal) % correctQualifiers.length];
+    value = `${value}, ${qualifier}`;
+  }
+
+  return `${value}.`;
+}
+
+function refineDistractorCore(text) {
+  const value = trimSentence(text);
+  const exact = new Map([
+    ["Ask managers to manually approve every endpoint connection by email", "Create a manual manager approval workflow for endpoint access outside the NAC enforcement path"],
+    ["Delete the honeyfile because it created a false positive", "Remove the honeyfile and rely on endpoint alerts before investigating the workstation"],
+    ["Assume the event proves data exfiltration completed", "Treat the deception alert as proof of completed exfiltration and begin breach notification before scoping"],
+    ["Disable logging to reduce overhead on the legacy server", "Reduce logging on the legacy server to preserve performance during the exception period"],
+    ["Disable all administrator accounts until the next maintenance cycle", "Suspend broad administrator access until the next maintenance cycle without first validating the change path"],
+    ["Disable MFA for users who connect from headquarters", "Trust headquarters network location as the primary factor for privileged access decisions"],
+    ["Disable email for all users for a week", "Block all email access during the investigation without first scoping affected mailboxes"],
+    ["Disable TLS certificate validation on clients", "Temporarily allow users to bypass certificate warnings while the wireless issue is investigated"],
+    ["Disable DNS logging to improve performance", "Reduce DNS telemetry collection to improve resolver performance during the investigation"],
+    ["Disable endpoint logging to reduce lateral movement noise", "Reduce endpoint telemetry during containment to lower alert volume"],
+    ["Disable DLP because false positives occurred", "Move DLP into monitor-only mode indefinitely after the first false-positive spike"],
+    ["Disable SSO so SaaS activity is harder to correlate", "Use local SaaS accounts to isolate provider activity from the corporate identity platform"],
+    ["Disable function logs to hide accidental secret exposure", "Reduce function logging to avoid capturing sensitive values while leaving secret storage unchanged"],
+    ["Disable baseline checks during all incidents", "Pause baseline checks during active incidents to reduce alert fatigue"],
+    ["Delete verbose logs to reduce storage during the attack", "Lower verbose logging during the attack to preserve storage for critical systems"],
+    ["Delete evidence that shows missed control operation", "Retain only summarized control evidence and remove detailed records that show failures"],
+    ["Delete risks after the first mitigation task is created", "Close risk entries as soon as a mitigation task is assigned to an owner"],
+    ["Delete files and put the drives in regular trash", "Use normal file deletion and standard disposal because the drives are leaving production"],
+    ["Tell users to delete all security emails", "Send broad guidance telling users to delete suspicious messages without a reporting path"],
+    ["Forward the malicious link as a live clickable URL to everyone", "Send the original lure to users for recognition without defanging links or adding reporting steps"],
+    ["Disable MFA because customers may be inconvenienced", "Reduce step-up authentication for affected customers until the suspicious login pattern decreases"],
+    ["Disable all account lockouts permanently", "Loosen account lockout controls to reduce help desk calls while monitoring login failures"],
+    ["Make the troubleshooting configuration the new standard without review", "Promote emergency troubleshooting settings into the baseline before formal review"],
+    ["Scan only once per year during audit season", "Move baseline validation to the next annual audit cycle after the emergency change period"],
+    ["Run aggressive credentialed vulnerability scans weekly", "Use frequent active scanning against the controller to prove the unsupported OS risk is visible"],
+    ["Install consumer antivirus on the controller", "Install a general-purpose endpoint agent on the controller without vendor validation"],
+    ["Use a shorter URL expiration without changing public permissions", "Shorten generated URLs while leaving the bucket policy publicly readable"],
+    ["Move the bucket to another region only", "Move the exposed bucket to a different region without changing object permissions"],
+    ["Move the finance application to a less visible DNS name", "Move the finance application to a less obvious DNS name while keeping access rules unchanged"],
+    ["Move the interface to a new DNS alias", "Move the administrative interface to a new DNS alias without disabling legacy protocols"],
+    ["Move databases to a different hostname on the same subnet", "Move databases to a different hostname while preserving the same flat network path"],
+    ["Rename the bucket to a random string", "Rename the bucket to a random string while leaving public object access enabled"],
+    ["Whitelist the destination to reduce alerts", "Add a temporary allow-list entry for the rare destination to suppress recurring alerts"],
+    ["Whitelist the workstation because the file was intentionally planted", "Exclude the workstation from deception alerts because the honeyfile was intentionally planted"],
+    ["Keep all rules because removing any rule may cause outages", "Retain unused firewall rules until every dependency owner signs off, without expiration or least-privilege review"],
+    ["Use a private IP address as the only protection", "Rely on private addressing as the primary management-plane protection"],
+    ["Use only verbal permission from a developer", "Begin testing using informal developer approval before written authorization is complete"],
+    ["Use only vulnerability scan results", "Base the communication timeline on vulnerability scan output instead of connection telemetry"],
+    ["Use screenshots as the source of truth for infrastructure state", "Use console screenshots as the authoritative record of infrastructure state"],
+    ["Use security questions as the only second factor", "Replace push fatigue controls with knowledge-based questions for high-risk users"],
+    ["Use SNMP community strings as administrator passwords", "Use shared management strings as a lightweight administrator authentication method"],
+    ["Use one shared API key for every function", "Use one shared API key across functions to simplify deployment and rotation"],
+    ["Use one shared secret for development and production", "Reuse the same deployment secret across environments to reduce pipeline complexity"],
+    ["Trust any device that connects from a corporate IP range", "Trust corporate network location as the primary authorization signal"],
+    ["Trust the device if it has a corporate sticker", "Treat visible corporate asset tags as enough evidence for network trust"]
+  ]);
+
+  if (exact.has(value)) return exact.get(value);
+
+  const patterns = [
+    [/^Disable (.+)$/i, (_, rest) => `Pause ${rest.toLowerCase()} during the response window to reduce disruption`],
+    [/^Delete (.+)$/i, (_, rest) => `Remove ${rest.toLowerCase()} after capturing a summary for later review`],
+    [/^Ignore (.+)$/i, (_, rest) => `Defer action on ${rest.toLowerCase()} until additional evidence is available`],
+    [/^Assume (.+)$/i, (_, rest) => `Treat it as if ${rest.toLowerCase()} without further validation`],
+    [/^Wait (.+)$/i, (_, rest) => `Schedule follow-up ${rest.toLowerCase()} rather than changing the active control`],
+    [/^Ask users (.+)$/i, (_, rest) => `Rely on users ${rest.toLowerCase()} through awareness guidance`],
+    [/^Ask (.+)$/i, (_, rest) => `Use a manual workflow where ${rest.toLowerCase()}`],
+    [/^Tell users (.+)$/i, (_, rest) => `Send user guidance that tells users ${rest.toLowerCase()}`],
+    [/^Move (.+)$/i, (_, rest) => `Relocate ${rest.toLowerCase()} without changing the core control`],
+    [/^Rename (.+)$/i, (_, rest) => `Rename or obscure ${rest.toLowerCase()} without changing authorization`],
+    [/^Keep (.+)$/i, (_, rest) => `Keep ${rest.toLowerCase()} as the primary control path`],
+    [/^Allow (.+)$/i, (_, rest) => `Allow ${rest.toLowerCase()} temporarily under a documented exception`],
+    [/^Trust (.+)$/i, (_, rest) => `Trust ${rest.toLowerCase()} as the main decision point`]
+  ];
+
+  for (const [pattern, replacement] of patterns) {
+    const match = value.match(pattern);
+    if (match) return replacement(...match);
+  }
+
+  return value;
+}
+
+function strengthenDistractor(text, profile, seed) {
+  const value = refineDistractorCore(text);
+  if ((seed + profile.ordinal) % 3 === 0) {
+    return `${value}.`;
+  }
+
+  const closer = profile.distractorClosers[(seed + value.length) % profile.distractorClosers.length];
+  return `${value}, ${closer}.`;
+}
+
+function balanceChoiceLengths(choiceTexts, correctTexts, profile, seed) {
+  const correctSet = new Set(correctTexts);
+  const allowCorrectLongest = (seed + profile.ordinal) % 5 === 0;
+  if (allowCorrectLongest) return choiceTexts;
+
+  const maxCorrectLength = Math.max(...choiceTexts
+    .filter((text) => correctSet.has(text))
+    .map((text) => text.length));
+  const distractorIndexes = choiceTexts
+    .map((text, index) => ({ text, index }))
+    .filter((item) => !correctSet.has(item.text));
+  let longestDistractor = Math.max(...distractorIndexes.map((item) => item.text.length));
+
+  if (longestDistractor > maxCorrectLength + 4) {
+    return choiceTexts;
+  }
+
+  const chosen = distractorIndexes[(seed + profile.ordinal) % distractorIndexes.length].index;
+  let updated = trimSentence(choiceTexts[chosen]);
+  let guard = 0;
+  while (updated.length <= maxCorrectLength + 4 && guard < profile.lengthBalancers.length + 2) {
+    const extra = profile.lengthBalancers[(seed + guard) % profile.lengthBalancers.length];
+    updated = `${updated}, ${extra}`;
+    guard++;
+  }
+
+  const next = [...choiceTexts];
+  next[chosen] = `${updated}.`;
+  return next;
+}
+
+function makeQuestion(domain, topicItem, globalNumber, localNumber, variant, topicIndex, profile) {
+  const org = organizations[(globalNumber + topicIndex + variant + profile.ordinal) % organizations.length];
+  const detail = details[(globalNumber * 3 + topicIndex + variant + profile.ordinal) % details.length];
+  const constraint = constraints[(globalNumber * 5 + topicIndex + variant + profile.ordinal) % constraints.length];
+  const stemClause = profile.stemClauses[(globalNumber + topicIndex + variant) % profile.stemClauses.length];
+  const hasSecondary = Boolean(topicItem.secondary);
+  const isMultiple = hasSecondary && (variant + topicIndex + profile.ordinal) % profile.multiModulo === 1;
+  const instruction = isMultiple
+    ? "Which TWO responses BEST address the situation?"
+    : "Which response is the BEST choice?";
+  const stem = `${org} ${topicItem.scenario} ${detail} ${constraint} ${stemClause} ${instruction}`;
+
+  const rawCorrects = isMultiple ? [topicItem.correct, topicItem.secondary] : [topicItem.correct];
+  const correctTexts = rawCorrects.map((text, index) => compactCorrect(text, profile, globalNumber + index + topicIndex));
+  const selectedDistractors = rotate(topicItem.distractors, globalNumber + topicIndex + variant + profile.ordinal)
+    .slice(0, 3)
+    .map((text, index) => strengthenDistractor(text, profile, globalNumber + index + topicIndex + variant));
+  const rawChoiceTexts = rotate([...correctTexts, ...selectedDistractors], globalNumber + variant + topicIndex + profile.ordinal);
+  const choiceTexts = balanceChoiceLengths(rawChoiceTexts, correctTexts, profile, globalNumber + topicIndex + variant);
   const choices = choiceTexts.map((text, index) => ({ id: optionIds[index], text }));
   const correctAnswers = choices
     .filter((choice) => correctTexts.includes(choice.text))
     .map((choice) => choice.id);
 
   return {
-    id: `SY0-701-D${domain.number[0]}-Q${String(localNumber).padStart(3, "0")}`,
-    global_id: `SY0-701-Q${String(globalNumber).padStart(3, "0")}`,
+    id: `SY0-701-${profile.id.toUpperCase().replace(/-/g, "")}-D${domain.number[0]}-Q${String(localNumber).padStart(3, "0")}`,
+    global_id: `SY0-701-Q${String(globalNumber).padStart(4, "0")}`,
     exam_code: "SY0-701",
     domain: `${domain.number} ${domain.name}`,
     domain_weight: domain.weight,
     objective: topicItem.objective,
     topic: topicItem.title,
-    difficulty: "advanced",
-    complexity_tags: ["scenario-based", "best-answer", "tradeoff-analysis", ...topicItem.tags],
+    difficulty: profile.id,
+    complexity_tags: ["scenario-based", "best-answer", "tradeoff-analysis", ...profile.tags, ...topicItem.tags],
     question_type: isMultiple ? "multiple_response" : "multiple_choice",
     stem,
     choices,
     correct_answers: correctAnswers,
-    explanation: topicItem.explanation,
+    explanation: `${topicItem.explanation} The distractors are near misses: they may improve process, monitoring, convenience, or documentation, but they do not best satisfy the priority in the scenario.`,
     source_alignment: [`CompTIA Security+ SY0-701 ${topicItem.objective}`],
     copyright_note: "Original practice item generated from objective alignment; not copied from a question bank or exam dump."
   };
@@ -253,51 +508,195 @@ for (const domain of domainSpecs) {
   }
 }
 
-const questions = [];
-const distribution = {};
-let globalNumber = 1;
+function normalizeDifficulty(value) {
+  const normalized = String(value || "hard").toLowerCase().trim().replace(/[\s_]+/g, "-");
+  if (["easy", "basic", "beginner", "foundational"].includes(normalized)) return "easy";
+  if (["normal", "medium", "moderate", "intermediate", "standard"].includes(normalized)) return "normal";
+  if (["hard", "advanced", "difficult"].includes(normalized)) return "hard";
+  if (["extra-hard", "expert", "very-hard", "extreme"].includes(normalized)) return "extra-hard";
+  return normalized;
+}
 
-for (const domain of domainSpecs) {
-  distribution[`${domain.number} ${domain.name}`] = 0;
-  let localNumber = 1;
-  for (let variant = 0; variant < 5; variant++) {
-    for (let topicIndex = 0; topicIndex < domain.topics.length; topicIndex++) {
-      const question = makeQuestion(domain, domain.topics[topicIndex], globalNumber, localNumber, variant, topicIndex);
-      questions.push(question);
-      distribution[`${domain.number} ${domain.name}`]++;
-      globalNumber++;
-      localNumber++;
+function buildQuestions() {
+  const questions = [];
+  const domainDistribution = {};
+  const difficultyDistribution = {};
+  const domainDifficultyDistribution = {};
+  let globalNumber = 1;
+
+  for (const profile of difficultyProfiles) {
+    difficultyDistribution[profile.id] = 0;
+    for (const domain of domainSpecs) {
+      const domainKey = `${domain.number} ${domain.name}`;
+      domainDistribution[domainKey] = domainDistribution[domainKey] || 0;
+      domainDifficultyDistribution[domainKey] = domainDifficultyDistribution[domainKey] || {};
+      domainDifficultyDistribution[domainKey][profile.id] = 0;
+      let localNumber = 1;
+
+      for (let variant = 0; variant < 5; variant++) {
+        for (let topicIndex = 0; topicIndex < domain.topics.length; topicIndex++) {
+          const question = makeQuestion(domain, domain.topics[topicIndex], globalNumber, localNumber, variant, topicIndex, profile);
+          questions.push(question);
+          domainDistribution[domainKey]++;
+          difficultyDistribution[profile.id]++;
+          domainDifficultyDistribution[domainKey][profile.id]++;
+          globalNumber++;
+          localNumber++;
+        }
+      }
     }
   }
+
+  return { questions, domainDistribution, difficultyDistribution, domainDifficultyDistribution };
 }
 
-const duplicateStems = questions.length - new Set(questions.map((q) => q.stem)).size;
-if (questions.length !== 500) {
-  throw new Error(`Expected 500 questions, got ${questions.length}`);
-}
-if (duplicateStems !== 0) {
-  throw new Error(`Generated duplicate stems: ${duplicateStems}`);
-}
-for (const question of questions) {
-  if (!question.correct_answers.length) {
-    throw new Error(`Question ${question.global_id} has no correct answer`);
+function validateQuestions(questions) {
+  const supportedDifficulties = new Set(difficultyProfiles.map((profile) => profile.id));
+  const ids = new Set();
+  const stems = new Set();
+  const issues = [];
+  const singleAnswerQuestions = [];
+  let correctTiedForLongest = 0;
+  let singleCorrectUniquelyLongest = 0;
+  let singleCorrectUniquelyShortest = 0;
+  let correctTiedForShortest = 0;
+  let singleCorrectMean = 0;
+  let singleDistractorMean = 0;
+
+  for (const question of questions) {
+    if (ids.has(question.id)) issues.push(`Duplicate id ${question.id}`);
+    ids.add(question.id);
+    if (stems.has(question.stem)) issues.push(`Duplicate stem ${question.global_id}`);
+    stems.add(question.stem);
+    if (!supportedDifficulties.has(normalizeDifficulty(question.difficulty))) {
+      issues.push(`Unsupported difficulty ${question.difficulty} on ${question.global_id}`);
+    }
+    if (!question.objective || !question.topic || !question.stem || !question.explanation) {
+      issues.push(`Missing required display text on ${question.global_id}`);
+    }
+    if (!Array.isArray(question.choices) || question.choices.length < 4) {
+      issues.push(`Too few choices on ${question.global_id}`);
+      continue;
+    }
+
+    const choiceIds = new Set(question.choices.map((choice) => choice.id));
+    const choiceTexts = new Set(question.choices.map((choice) => choice.text));
+    if (choiceIds.size !== question.choices.length) issues.push(`Duplicate choice id on ${question.global_id}`);
+    if (choiceTexts.size !== question.choices.length) issues.push(`Duplicate choice text on ${question.global_id}`);
+    if (!Array.isArray(question.correct_answers) || question.correct_answers.length === 0) {
+      issues.push(`Missing correct_answers on ${question.global_id}`);
+      continue;
+    }
+    for (const answer of question.correct_answers) {
+      if (!choiceIds.has(answer)) issues.push(`Correct answer ${answer} missing from choices on ${question.global_id}`);
+    }
+    if (question.question_type === "multiple_choice" && question.correct_answers.length !== 1) {
+      issues.push(`multiple_choice answer count mismatch on ${question.global_id}`);
+    }
+    if (question.question_type === "multiple_response" && question.correct_answers.length < 2) {
+      issues.push(`multiple_response answer count mismatch on ${question.global_id}`);
+    }
+
+    const maxLength = Math.max(...question.choices.map((choice) => choice.text.length));
+    const correctChoices = question.choices.filter((choice) => question.correct_answers.includes(choice.id));
+    const distractorChoices = question.choices.filter((choice) => !question.correct_answers.includes(choice.id));
+    if (correctChoices.some((choice) => choice.text.length === maxLength)) correctTiedForLongest++;
+
+    if (question.correct_answers.length === 1) {
+      singleAnswerQuestions.push(question);
+      const correctChoice = correctChoices[0];
+      const longerDistractors = distractorChoices.filter((choice) => choice.text.length > correctChoice.text.length);
+      const equalDistractors = distractorChoices.filter((choice) => choice.text.length === correctChoice.text.length);
+      const shorterDistractors = distractorChoices.filter((choice) => choice.text.length < correctChoice.text.length);
+      if (longerDistractors.length === 0 && equalDistractors.length === 0) singleCorrectUniquelyLongest++;
+      if (shorterDistractors.length === 0 && equalDistractors.length === 0) singleCorrectUniquelyShortest++;
+      if (correctChoice.text.length === Math.min(...question.choices.map((choice) => choice.text.length))) {
+        correctTiedForShortest++;
+      }
+      singleCorrectMean += correctChoice.text.length;
+      singleDistractorMean += distractorChoices.reduce((sum, choice) => sum + choice.text.length, 0) / distractorChoices.length;
+    }
   }
+
+  const singleLongestRate = singleCorrectUniquelyLongest / Math.max(1, singleAnswerQuestions.length);
+  const anyLongestRate = correctTiedForLongest / Math.max(1, questions.length);
+  singleCorrectMean = Math.round((singleCorrectMean / Math.max(1, singleAnswerQuestions.length)) * 10) / 10;
+  singleDistractorMean = Math.round((singleDistractorMean / Math.max(1, singleAnswerQuestions.length)) * 10) / 10;
+
+  if (singleLongestRate > 0.35) {
+    issues.push(`Correct answer is uniquely longest on ${(singleLongestRate * 100).toFixed(1)}% of single-answer questions`);
+  }
+  const singleShortestRate = singleCorrectUniquelyShortest / Math.max(1, singleAnswerQuestions.length);
+  const anyShortestRate = correctTiedForShortest / Math.max(1, singleAnswerQuestions.length);
+  if (singleShortestRate > 0.40) {
+    issues.push(`Correct answer is uniquely shortest on ${(singleShortestRate * 100).toFixed(1)}% of single-answer questions`);
+  }
+  if (anyShortestRate > 0.48) {
+    issues.push(`Correct answer is tied for shortest on ${(anyShortestRate * 100).toFixed(1)}% of single-answer questions`);
+  }
+  if (anyLongestRate > 0.45) {
+    issues.push(`A correct answer is tied for longest on ${(anyLongestRate * 100).toFixed(1)}% of all questions`);
+  }
+  if (singleCorrectMean > singleDistractorMean * 1.08) {
+    issues.push(`Correct answer mean length ${singleCorrectMean} exceeds distractor mean ${singleDistractorMean} by too much`);
+  }
+  if (singleCorrectMean < singleDistractorMean * 0.82) {
+    issues.push(`Correct answer mean length ${singleCorrectMean} is too far below distractor mean ${singleDistractorMean}`);
+  }
+
+  if (issues.length) {
+    throw new Error(`Validation failed:\n${issues.slice(0, 20).join("\n")}${issues.length > 20 ? `\n...and ${issues.length - 20} more` : ""}`);
+  }
+
+  return {
+    single_answer_questions: singleAnswerQuestions.length,
+    correct_uniquely_longest_single_answer: singleCorrectUniquelyLongest,
+    correct_uniquely_longest_single_answer_rate: Math.round(singleLongestRate * 1000) / 10,
+    correct_uniquely_shortest_single_answer: singleCorrectUniquelyShortest,
+    correct_uniquely_shortest_single_answer_rate: Math.round(singleShortestRate * 1000) / 10,
+    correct_tied_for_shortest_single_answer: correctTiedForShortest,
+    correct_tied_for_shortest_single_answer_rate: Math.round(anyShortestRate * 1000) / 10,
+    correct_tied_for_longest_all_questions: correctTiedForLongest,
+    correct_tied_for_longest_all_questions_rate: Math.round(anyLongestRate * 1000) / 10,
+    single_correct_mean_length: singleCorrectMean,
+    single_distractor_mean_length: singleDistractorMean
+  };
 }
+
+const {
+  questions,
+  domainDistribution,
+  difficultyDistribution,
+  domainDifficultyDistribution
+} = buildQuestions();
+
+const expectedTotal = 500 * difficultyProfiles.length;
+if (questions.length !== expectedTotal) {
+  throw new Error(`Expected ${expectedTotal} questions, got ${questions.length}`);
+}
+
+const validation = validateQuestions(questions);
 
 const bank = {
   metadata: {
-    title: "Original advanced CompTIA Security+ SY0-701 practice question bank",
+    title: "Original multi-difficulty CompTIA Security+ SY0-701 practice question bank",
     exam_code: "SY0-701",
     exam_version: "Security+ V7",
     generated_on: GENERATED_ON,
     question_count: questions.length,
-    difficulty_profile: "Advanced scenario-based questions with plausible distractors and explanations.",
-    creation_method: "Original questions generated from public objective alignment and current exam details; no practice-bank questions, exam dumps, or proprietary items were copied.",
+    difficulty_profile: "500 questions each for easy, normal, hard, and extra-hard. Higher tiers add PBQ-style pressure, tradeoff language, and near-miss distractors.",
+    creation_method: "Original questions generated from public objective alignment and current exam details; no practice-bank questions, exam dumps, or proprietary items were copied. Answer options are balanced so length is not a reliable clue.",
+    validation,
     sources_used: [
       {
         title: "CompTIA Security+ certification page",
         url: "https://www.comptia.org/en-us/certifications/security/",
         used_for: "Current exam code, exam details, domain weights, and official objective summary."
+      },
+      {
+        title: "CompTIA Performance-Based Questions overview",
+        url: "https://www.comptia.org/en-gb/resources/test-policies/exam-development/performance-based-questions-explained/",
+        used_for: "PBQ-style real-world scenario framing and multiple possible response paths."
       }
     ],
     schema: {
@@ -306,7 +705,9 @@ const bank = {
       copyright_note: "Every item is original practice content generated for study use."
     }
   },
-  domain_distribution: distribution,
+  difficulty_distribution: difficultyDistribution,
+  domain_distribution: domainDistribution,
+  domain_difficulty_distribution: domainDifficultyDistribution,
   questions
 };
 
