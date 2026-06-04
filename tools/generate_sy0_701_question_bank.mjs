@@ -154,6 +154,73 @@ const correctQualifiers = [
   "then confirm that the original exposure or control gap is closed"
 ];
 
+const questionArchetypes = [
+  {
+    id: "best-control",
+    label: "Best control selection",
+    instruction: "Which response is the BEST choice?",
+    opener: (org, topicItem, detail, constraint, profile) =>
+      `${org} ${topicItem.scenario} ${detail} ${constraint} ${profile.stemClauses[0]}`
+  },
+  {
+    id: "first-action",
+    label: "First or next action",
+    instruction: "Which action should the security team take FIRST?",
+    opener: (org, topicItem, detail, constraint, profile) =>
+      `${org} ${topicItem.scenario} The team is under time pressure and must avoid treating a later governance step as the first technical move. ${detail} ${constraint} ${profile.stemClauses[1]}`
+  },
+  {
+    id: "log-review",
+    label: "Log or evidence review",
+    instruction: "Which response BEST fits the evidence?",
+    opener: (org, topicItem, detail, constraint, profile) =>
+      `${org} ${topicItem.scenario} The analyst also sees this evidence: ${evidenceSnippet(topicItem)} ${detail} ${constraint} ${profile.stemClauses[2]}`
+  },
+  {
+    id: "mini-pbq",
+    label: "Mini PBQ-style task",
+    instruction: "Which option BEST completes the simulated task?",
+    opener: (org, topicItem, detail, constraint, profile) =>
+      `${org} is presented with a simulated Security+ task: ${pbqTask(topicItem)} The task is tied to this condition: ${topicItem.scenario} ${detail} ${constraint} ${profile.stemClauses[(profile.ordinal + 1) % profile.stemClauses.length]}`
+  },
+  {
+    id: "tradeoff",
+    label: "Tradeoff and constraint",
+    instruction: "Which option most directly addresses the root cause without overcorrecting?",
+    opener: (org, topicItem, detail, constraint, profile) =>
+      `${org} ${topicItem.scenario} Two stakeholders prefer a low-friction answer, but the security team must choose the option that changes the risk condition. ${detail} ${constraint} ${profile.stemClauses[(profile.ordinal + 2) % profile.stemClauses.length]}`
+  },
+  {
+    id: "governance-evidence",
+    label: "Governance evidence",
+    instruction: "Which response creates the strongest defensible outcome?",
+    opener: (org, topicItem, detail, constraint, profile) =>
+      `${org} ${topicItem.scenario} Auditors, technical owners, and business owners all need evidence that the selected action matches the stated risk. ${detail} ${constraint} ${profile.stemClauses[profile.ordinal % profile.stemClauses.length]}`
+  }
+];
+
+function evidenceSnippet(topicItem) {
+  const tagText = [...topicItem.tags, topicItem.objective, topicItem.title].join(" ").toLowerCase();
+  if (/dns|tunnel|domain/.test(tagText)) return "`dns.log: qname=9f3a7c2b.client.example.bad type=TXT count=1844 entropy=high`.";
+  if (/cloud|oauth|saas|iam|identity|mfa|pam/.test(tagText)) return "`idp_audit: grant_type=consent app=unverified scope=mail.read files.read result=success`.";
+  if (/waf|api|sql|web|ssrf/.test(tagText)) return "`waf.log: method=GET uri=/api/invoices?id=../metadata status=403 rule=ssrf-candidate`.";
+  if (/ransom|malware|edr|credential|beacon|c2/.test(tagText)) return "`edr: process=archive.exe action=mass_rename share=finance$ rate=312/min confidence=high`.";
+  if (/wireless|rfid|physical/.test(tagText)) return "`access.log: badge_id=E104 door=A12 then door=R7 elapsed=11s distance=2.4km`.";
+  if (/firewall|nac|network|segmentation|protocol/.test(tagText)) return "`fw_change: src=any dst=db-subnet service=any action=allow owner=emergency age=181d`.";
+  if (/risk|audit|governance|compliance|vendor|third-party/.test(tagText)) return "`risk_register: owner=blank review_date=expired exception=permanent evidence=unmapped`.";
+  return "`siem: correlated_events=3 sources=endpoint,identity,network severity=high confidence=medium`.";
+}
+
+function pbqTask(topicItem) {
+  const tagText = [...topicItem.tags, topicItem.objective, topicItem.title].join(" ").toLowerCase();
+  if (/firewall|segmentation|nac|network/.test(tagText)) return "select the rule or segmentation change that permits required traffic while blocking lateral movement.";
+  if (/cloud|waf|api|serverless|container/.test(tagText)) return "place the preventive control at the right layer and verify that identity, logging, and deployment controls still apply.";
+  if (/incident|forensics|ransom|malware|logs|edr/.test(tagText)) return "choose the containment step that preserves evidence and prevents additional spread.";
+  if (/pki|certificate|crypto|hash|signature|kms|hsm/.test(tagText)) return "match the cryptographic mechanism to the security property and key-management requirement.";
+  if (/risk|governance|audit|vendor|compliance|privacy/.test(tagText)) return "map the finding to the right owner, evidence, and risk-treatment decision.";
+  return "choose the control that best satisfies the scenario without relying on implicit trust or manual review alone.";
+}
+
 function topic(objective, title, scenario, correct, secondary, distractors, explanation, tags) {
   return { objective, title, scenario, correct, secondary, distractors, explanation, tags };
 }
@@ -219,6 +286,14 @@ function refineDistractorCore(text) {
     ["Delete evidence that shows missed control operation", "Retain only summarized control evidence and remove detailed records that show failures"],
     ["Delete risks after the first mitigation task is created", "Close risk entries as soon as a mitigation task is assigned to an owner"],
     ["Delete files and put the drives in regular trash", "Use normal file deletion and standard disposal because the drives are leaving production"],
+    ["Remove all endpoint monitoring because findings are repetitive", "Move recurring endpoint findings into a low-priority exception queue without changing the baseline"],
+    ["Manually email users asking them to change settings", "Ask endpoint owners to correct settings manually and attest completion during the next review"],
+    ["Expose the service only during business hours and rely on user vigilance", "Limit the legacy service to business hours while relying on users to report abnormal behavior"],
+    ["Delay all mitigation until the replacement project is complete", "Track the replacement project as the mitigation plan without adding interim exposure controls"],
+    ["Copy selected files to a USB drive without hashing", "Collect selected files for legal review before completing a full forensic image and hash validation"],
+    ["Let the employee continue using the laptop until trial", "Leave the laptop in service while monitoring for further activity so business operations are not interrupted"],
+    ["Reimage the laptop before legal review", "Reimage the laptop after copying the most relevant user files for legal review"],
+    ["Keep Telnet but use longer usernames", "Keep Telnet temporarily but restrict it to longer administrator usernames and a management subnet"],
     ["Tell users to delete all security emails", "Send broad guidance telling users to delete suspicious messages without a reporting path"],
     ["Forward the malicious link as a live clickable URL to everyone", "Send the original lure to users for recognition without defanging links or adding reporting steps"],
     ["Disable MFA because customers may be inconvenienced", "Reduce step-up authentication for affected customers until the suspicious login pattern decreases"],
@@ -253,12 +328,19 @@ function refineDistractorCore(text) {
   const patterns = [
     [/^Disable (.+)$/i, (_, rest) => `Pause ${rest.toLowerCase()} during the response window to reduce disruption`],
     [/^Delete (.+)$/i, (_, rest) => `Remove ${rest.toLowerCase()} after capturing a summary for later review`],
+    [/^Remove (.+)$/i, (_, rest) => `Move ${rest.toLowerCase()} into an exception workflow instead of correcting it immediately`],
     [/^Ignore (.+)$/i, (_, rest) => `Defer action on ${rest.toLowerCase()} until additional evidence is available`],
     [/^Assume (.+)$/i, (_, rest) => `Treat it as if ${rest.toLowerCase()} without further validation`],
     [/^Wait (.+)$/i, (_, rest) => `Schedule follow-up ${rest.toLowerCase()} rather than changing the active control`],
+    [/^Delay (.+)$/i, (_, rest) => `Track ${rest.toLowerCase()} as a future remediation item without adding a compensating control`],
     [/^Ask users (.+)$/i, (_, rest) => `Rely on users ${rest.toLowerCase()} through awareness guidance`],
     [/^Ask (.+)$/i, (_, rest) => `Use a manual workflow where ${rest.toLowerCase()}`],
+    [/^Manually (.+)$/i, (_, rest) => `Handle ${rest.toLowerCase()} through manual attestation rather than automated enforcement`],
     [/^Tell users (.+)$/i, (_, rest) => `Send user guidance that tells users ${rest.toLowerCase()}`],
+    [/^Expose (.+)$/i, (_, rest) => `Limit exposure of ${rest.toLowerCase()} with a time window instead of changing access control`],
+    [/^Copy (.+)$/i, (_, rest) => `Collect ${rest.toLowerCase()} before completing full evidence preservation`],
+    [/^Reimage (.+)$/i, (_, rest) => `Reimage ${rest.toLowerCase()} after copying selected artifacts`],
+    [/^Let (.+)$/i, (_, rest) => `Allow ${rest.toLowerCase()} while monitoring for additional signs of impact`],
     [/^Move (.+)$/i, (_, rest) => `Relocate ${rest.toLowerCase()} without changing the core control`],
     [/^Rename (.+)$/i, (_, rest) => `Rename or obscure ${rest.toLowerCase()} without changing authorization`],
     [/^Keep (.+)$/i, (_, rest) => `Keep ${rest.toLowerCase()} as the primary control path`],
@@ -316,16 +398,16 @@ function balanceChoiceLengths(choiceTexts, correctTexts, profile, seed) {
 }
 
 function makeQuestion(domain, topicItem, globalNumber, localNumber, variant, topicIndex, profile) {
+  const archetype = questionArchetypes[(globalNumber + topicIndex + profile.ordinal) % questionArchetypes.length];
   const org = organizations[(globalNumber + topicIndex + variant + profile.ordinal) % organizations.length];
   const detail = details[(globalNumber * 3 + topicIndex + variant + profile.ordinal) % details.length];
   const constraint = constraints[(globalNumber * 5 + topicIndex + variant + profile.ordinal) % constraints.length];
-  const stemClause = profile.stemClauses[(globalNumber + topicIndex + variant) % profile.stemClauses.length];
   const hasSecondary = Boolean(topicItem.secondary);
   const isMultiple = hasSecondary && (variant + topicIndex + profile.ordinal) % profile.multiModulo === 1;
   const instruction = isMultiple
     ? "Which TWO responses BEST address the situation?"
-    : "Which response is the BEST choice?";
-  const stem = `${org} ${topicItem.scenario} ${detail} ${constraint} ${stemClause} ${instruction}`;
+    : archetype.instruction;
+  const stem = `${archetype.opener(org, topicItem, detail, constraint, profile)} ${instruction}`;
 
   const rawCorrects = isMultiple ? [topicItem.correct, topicItem.secondary] : [topicItem.correct];
   const correctTexts = rawCorrects.map((text, index) => compactCorrect(text, profile, globalNumber + index + topicIndex));
@@ -348,7 +430,9 @@ function makeQuestion(domain, topicItem, globalNumber, localNumber, variant, top
     objective: topicItem.objective,
     topic: topicItem.title,
     difficulty: profile.id,
-    complexity_tags: ["scenario-based", "best-answer", "tradeoff-analysis", ...profile.tags, ...topicItem.tags],
+    archetype: archetype.id,
+    archetype_label: archetype.label,
+    complexity_tags: ["scenario-based", "best-answer", "tradeoff-analysis", archetype.id, ...profile.tags, ...topicItem.tags],
     question_type: isMultiple ? "multiple_response" : "multiple_choice",
     stem,
     choices,
@@ -522,6 +606,7 @@ function buildQuestions() {
   const domainDistribution = {};
   const difficultyDistribution = {};
   const domainDifficultyDistribution = {};
+  const archetypeDistribution = {};
   let globalNumber = 1;
 
   for (const profile of difficultyProfiles) {
@@ -533,21 +618,21 @@ function buildQuestions() {
       domainDifficultyDistribution[domainKey][profile.id] = 0;
       let localNumber = 1;
 
-      for (let variant = 0; variant < 5; variant++) {
-        for (let topicIndex = 0; topicIndex < domain.topics.length; topicIndex++) {
-          const question = makeQuestion(domain, domain.topics[topicIndex], globalNumber, localNumber, variant, topicIndex, profile);
-          questions.push(question);
-          domainDistribution[domainKey]++;
-          difficultyDistribution[profile.id]++;
-          domainDifficultyDistribution[domainKey][profile.id]++;
-          globalNumber++;
-          localNumber++;
-        }
+      for (let topicIndex = 0; topicIndex < domain.topics.length; topicIndex++) {
+        const variant = (topicIndex + profile.ordinal * 2 + domain.number.charCodeAt(0)) % 5;
+        const question = makeQuestion(domain, domain.topics[topicIndex], globalNumber, localNumber, variant, topicIndex, profile);
+        questions.push(question);
+        domainDistribution[domainKey]++;
+        difficultyDistribution[profile.id]++;
+        domainDifficultyDistribution[domainKey][profile.id]++;
+        archetypeDistribution[question.archetype] = (archetypeDistribution[question.archetype] || 0) + 1;
+        globalNumber++;
+        localNumber++;
       }
     }
   }
 
-  return { questions, domainDistribution, difficultyDistribution, domainDifficultyDistribution };
+  return { questions, domainDistribution, difficultyDistribution, domainDifficultyDistribution, archetypeDistribution };
 }
 
 function validateQuestions(questions) {
@@ -556,6 +641,7 @@ function validateQuestions(questions) {
   const stems = new Set();
   const issues = [];
   const singleAnswerQuestions = [];
+  const singleCorrectPositionCounts = {};
   let correctTiedForLongest = 0;
   let singleCorrectUniquelyLongest = 0;
   let singleCorrectUniquelyShortest = 0;
@@ -604,6 +690,7 @@ function validateQuestions(questions) {
 
     if (question.correct_answers.length === 1) {
       singleAnswerQuestions.push(question);
+      singleCorrectPositionCounts[question.correct_answers[0]] = (singleCorrectPositionCounts[question.correct_answers[0]] || 0) + 1;
       const correctChoice = correctChoices[0];
       const longerDistractors = distractorChoices.filter((choice) => choice.text.length > correctChoice.text.length);
       const equalDistractors = distractorChoices.filter((choice) => choice.text.length === correctChoice.text.length);
@@ -620,6 +707,7 @@ function validateQuestions(questions) {
 
   const singleLongestRate = singleCorrectUniquelyLongest / Math.max(1, singleAnswerQuestions.length);
   const anyLongestRate = correctTiedForLongest / Math.max(1, questions.length);
+  const maxSinglePositionRate = Math.max(...Object.values(singleCorrectPositionCounts)) / Math.max(1, singleAnswerQuestions.length);
   singleCorrectMean = Math.round((singleCorrectMean / Math.max(1, singleAnswerQuestions.length)) * 10) / 10;
   singleDistractorMean = Math.round((singleDistractorMean / Math.max(1, singleAnswerQuestions.length)) * 10) / 10;
 
@@ -643,6 +731,9 @@ function validateQuestions(questions) {
   if (singleCorrectMean < singleDistractorMean * 0.82) {
     issues.push(`Correct answer mean length ${singleCorrectMean} is too far below distractor mean ${singleDistractorMean}`);
   }
+  if (maxSinglePositionRate > 0.36) {
+    issues.push(`Correct answer position is too predictable: ${JSON.stringify(singleCorrectPositionCounts)}`);
+  }
 
   if (issues.length) {
     throw new Error(`Validation failed:\n${issues.slice(0, 20).join("\n")}${issues.length > 20 ? `\n...and ${issues.length - 20} more` : ""}`);
@@ -658,6 +749,8 @@ function validateQuestions(questions) {
     correct_tied_for_shortest_single_answer_rate: Math.round(anyShortestRate * 1000) / 10,
     correct_tied_for_longest_all_questions: correctTiedForLongest,
     correct_tied_for_longest_all_questions_rate: Math.round(anyLongestRate * 1000) / 10,
+    single_correct_position_counts: singleCorrectPositionCounts,
+    max_single_correct_position_rate: Math.round(maxSinglePositionRate * 1000) / 10,
     single_correct_mean_length: singleCorrectMean,
     single_distractor_mean_length: singleDistractorMean
   };
@@ -667,10 +760,11 @@ const {
   questions,
   domainDistribution,
   difficultyDistribution,
-  domainDifficultyDistribution
+  domainDifficultyDistribution,
+  archetypeDistribution
 } = buildQuestions();
 
-const expectedTotal = 500 * difficultyProfiles.length;
+const expectedTotal = 100 * difficultyProfiles.length;
 if (questions.length !== expectedTotal) {
   throw new Error(`Expected ${expectedTotal} questions, got ${questions.length}`);
 }
@@ -684,9 +778,20 @@ const bank = {
     exam_version: "Security+ V7",
     generated_on: GENERATED_ON,
     question_count: questions.length,
-    difficulty_profile: "500 questions each for easy, normal, hard, and extra-hard. Higher tiers add PBQ-style pressure, tradeoff language, and near-miss distractors.",
-    creation_method: "Original questions generated from public objective alignment and current exam details; no practice-bank questions, exam dumps, or proprietary items were copied. Answer options are balanced so length is not a reliable clue.",
+    difficulty_profile: "100 questions each for easy, normal, hard, and extra-hard. Lower volume is intentional: the bank favors variety and question quality over repeating the same base scenario many times.",
+    creation_method: "Original questions generated from public objective alignment, official exam-format references, third-party training-pattern research, and community-reported study pain points. No practice-bank questions, exam dumps, or proprietary items were copied. Answer options are balanced so length, position, tone, and specificity are not reliable clues.",
+    format_profile: "Mixed single-best, first/next action, log-review, mini-PBQ-style, tradeoff, governance-evidence, and multi-response questions.",
     validation,
+    quality_controls: [
+      "Each question maps to a Security+ SY0-701 objective and domain.",
+      "The four app-supported difficulties are used exactly: easy, normal, hard, extra-hard.",
+      "Domain distribution preserves the official 12/22/18/28/20 weighting per difficulty.",
+      "Correct answer length is checked against both longest-answer and shortest-answer bias.",
+      "Correct answer position distribution is checked to avoid A/B/C/D predictability.",
+      "Distractors are generated as plausible near misses in the same category as the correct answer.",
+      "BEST/FIRST/NEXT questions include a scenario constraint so only one answer best fits priority, risk, or business impact.",
+      "Mini-PBQ and log-review items use original artifacts and do not copy real exam or third-party question text."
+    ],
     sources_used: [
       {
         title: "CompTIA Security+ certification page",
@@ -697,6 +802,36 @@ const bank = {
         title: "CompTIA Performance-Based Questions overview",
         url: "https://www.comptia.org/en-gb/resources/test-policies/exam-development/performance-based-questions-explained/",
         used_for: "PBQ-style real-world scenario framing and multiple possible response paths."
+      },
+      {
+        title: "CompTIA Help: What Are Performance-Based Questions?",
+        url: "https://help.comptia.org/hc/en-us/articles/11183177160596-What-Are-Performance-Based-Questions-PBQs",
+        used_for: "Official confirmation that Security+ includes simulation PBQs designed around real-world problem solving."
+      },
+      {
+        title: "Professor Messer SY0-701 exam overview",
+        url: "https://www.professormesser.com/security-plus/sy0-701/sy0-701-video/how-to-pass-your-sy0-701-security-exam/",
+        used_for: "Third-party training explanation of domain weights, multiple choice, PBQ types, and objective alignment."
+      },
+      {
+        title: "ExamCompass Security+ SY0-701 practice-test index",
+        url: "https://www.examcompass.com/comptia/security-plus-certification/free-security-plus-practice-tests",
+        used_for: "Observed topic-level quiz organization and acronym/topic drill structure; no question text copied."
+      },
+      {
+        title: "Crucial Exams Security+ SY0-701 overview",
+        url: "https://crucialexams.com/exams/comptia/security/sy0-701/practice-tests-practice-questions",
+        used_for: "Observed study-mode, timed-mode, PBQ, flashcard, and domain-targeted practice patterns; no question text copied."
+      },
+      {
+        title: "ExamCoach Security+ study guide",
+        url: "https://www.myexamcoach.app/blog/comptia-security-plus-study-guide",
+        used_for: "Observed emphasis on judgment, scenario wording, weak domains, and time pressure; no question text copied."
+      },
+      {
+        title: "Reddit r/CompTIA SY0-701 candidate experience",
+        url: "https://www.reddit.com/r/CompTIA/comments/1pv2vuk/passed_security_sy0701_from_mid70s_practice_tests/",
+        used_for: "Community-reported difficulty patterns: PBQs, Security Operations, IAM, acronyms, and choosing between two plausible answers; no question text copied."
       }
     ],
     schema: {
@@ -708,6 +843,7 @@ const bank = {
   difficulty_distribution: difficultyDistribution,
   domain_distribution: domainDistribution,
   domain_difficulty_distribution: domainDifficultyDistribution,
+  archetype_distribution: archetypeDistribution,
   questions
 };
 
